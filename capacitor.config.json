@@ -1,0 +1,6 @@
+{
+  "appId": "com.spaceweather.networkapp",
+  "appName": "Network Issue Reporting App",
+  "webDir": "build",
+  "bundledWebRuntime": false
+}
