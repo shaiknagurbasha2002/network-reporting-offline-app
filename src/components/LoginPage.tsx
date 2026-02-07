@@ -52,8 +52,11 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
         name:
           fbUser.displayName ||
           (fbUser.email ? fbUser.email.split("@")[0] : "User"),
+        displayName: fbUser.displayName || undefined,
         email: fbUser.email ?? "",
         location: existing?.location ?? "Newark, NJ",
+        photoURL: fbUser.photoURL ?? null,
+        reportsCount: existing?.reportsCount ?? 0,
         isAdmin: !!existing?.isAdmin,
       };
 
@@ -139,8 +142,11 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
         const profile = {
           uid: fbUser.uid,
           name: signupName || (fbUser.email ? fbUser.email.split("@")[0] : "User"),
+          displayName: signupName || fbUser.displayName || undefined,
           email: fbUser.email ?? signupEmail,
           location: signupLocation || "Newark, NJ",
+          photoURL: fbUser.photoURL ?? null,
+          reportsCount: 0,
           isAdmin: false,
         };
 

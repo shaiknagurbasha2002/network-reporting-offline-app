@@ -6,7 +6,8 @@ import { Progress } from "./ui/progress";
 import { Signal, Award, Trophy, ArrowLeft, Menu, X, Sparkles } from "lucide-react";
 import { SpeedTestMeter } from "./SpeedTestMeter";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { subscribeLeaderboard, type LeaderboardEntry } from "@/lib/leaderboardService";
 
 interface Report {
   id: number;
@@ -39,20 +40,29 @@ const badges = [
   { id: 'community-star', name: 'Community Star', icon: '⭐', description: 'Top 10 contributor', earned: false },
 ];
 
-const leaderboard = [
-  { rank: 1, name: 'Sarah Johnson', points: 850, reports: 85 },
-  { rank: 2, name: 'Mike Chen', points: 720, reports: 72 },
-  { rank: 3, name: 'Emma Davis', points: 680, reports: 68 },
-  { rank: 4, name: 'Alex Kumar', points: 560, reports: 56 },
-  { rank: 5, name: 'John Doe', points: 450, reports: 45 },
-];
-
 export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeedTestComplete }: UserDashboardProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardEntry[]>([]);
   const userPoints = userReports.length * 10;
   const earnedBadges = badges.filter(b => b.earned);
   const nextLevel = Math.ceil(userPoints / 100) * 100;
   const progressToNextLevel = ((userPoints % 100) / 100) * 100;
+
+  useEffect(() => {
+    const unsub = subscribeLeaderboard(setLeaderboardRows, 10);
+    return () => unsub();
+  }, []);
+
+  const leaderboard = useMemo(
+    () =>
+      leaderboardRows.map((row, index) => ({
+        rank: index + 1,
+        name: row.displayName || "User",
+        reports: row.reportsCount ?? 0,
+        points: (row.reportsCount ?? 0) * 10,
+      })),
+    [leaderboardRows]
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 relative overflow-hidden">
@@ -347,7 +357,12 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                     <h2 className="text-xl font-bold">Leaderboard</h2>
                   </div>
                   <div className="space-y-2">
-                    {leaderboard.map((entry, index) => (
+                    {leaderboard.length === 0 ? (
+                      <div className="text-center text-sm text-gray-500 py-6">
+                        No users yet. Be the first to report an issue!
+                      </div>
+                    ) : (
+                      leaderboard.map((entry, index) => (
                       <motion.div 
                         key={entry.rank}
                         initial={{ opacity: 0, x: -10 }}
@@ -379,7 +394,8 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                         </div>
                         <div className="font-bold text-blue-600 shrink-0">{entry.points}</div>
                       </motion.div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </Card>
               </motion.div>

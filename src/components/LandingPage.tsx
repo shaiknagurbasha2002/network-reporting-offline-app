@@ -6,9 +6,10 @@ import { motion } from "motion/react";
 interface LandingPageProps {
   onNavigate: (page: string) => void;
   isAdmin?: boolean;
+  isAuthenticated?: boolean;
 }
 
-export function LandingPage({ onNavigate, isAdmin }: LandingPageProps) {
+export function LandingPage({ onNavigate, isAdmin, isAuthenticated }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 relative overflow-hidden">
       {/* Animated Background Elements */}
@@ -68,27 +69,45 @@ export function LandingPage({ onNavigate, isAdmin }: LandingPageProps) {
           </div>
         </div>
         <div className="flex gap-2">
-          {isAdmin && (
+          {isAuthenticated ? (
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button 
-                onClick={() => onNavigate('admin')} 
+              <Button
+                onClick={() => onNavigate(isAdmin ? "admin" : "dashboard")}
                 variant="outline"
                 className="gap-2 border-2 hover:bg-white/80 backdrop-blur-sm"
               >
                 <Shield className="w-4 h-4" />
-                <span className="hidden md:inline">Admin Panel</span>
+                <span className="hidden md:inline">
+                  {isAdmin ? "Go to Admin" : "Go to Dashboard"}
+                </span>
+                <span className="md:hidden">{isAdmin ? "Admin" : "Dashboard"}</span>
               </Button>
             </motion.div>
+          ) : (
+            <>
+              {isAdmin && (
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button 
+                    onClick={() => onNavigate('admin')} 
+                    variant="outline"
+                    className="gap-2 border-2 hover:bg-white/80 backdrop-blur-sm"
+                  >
+                    <Shield className="w-4 h-4" />
+                    <span className="hidden md:inline">Admin Panel</span>
+                  </Button>
+                </motion.div>
+              )}
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button 
+                  onClick={() => onNavigate('login')} 
+                  variant="outline"
+                  className="border-2 hover:bg-white/80 backdrop-blur-sm"
+                >
+                  Login
+                </Button>
+              </motion.div>
+            </>
           )}
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button 
-              onClick={() => onNavigate('login')} 
-              variant="outline"
-              className="border-2 hover:bg-white/80 backdrop-blur-sm"
-            >
-              Login
-            </Button>
-          </motion.div>
         </div>
       </motion.header>
 

@@ -1,5 +1,11 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth, GoogleAuthProvider } from "firebase/auth";
+import {
+  getAuth,
+  type Auth,
+  GoogleAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+} from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
@@ -33,6 +39,9 @@ if (isFirebaseConfigured) {
   _googleProvider = new GoogleAuthProvider();
   _db = getFirestore(_app);
   _storage = getStorage(_app);
+  setPersistence(_auth, browserLocalPersistence).catch((err) => {
+    console.warn("[Firebase] Failed to set auth persistence:", err);
+  });
 } else {
   // Avoid crashing into a blank page when .env isn't configured yet.
   console.warn(

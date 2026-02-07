@@ -80,6 +80,7 @@ export default function ReportIssuePage({
         userId: currentUser.uid,
         userName: user?.name || "Anonymous",
         userEmail: currentUser.email || user?.email || "",
+        userPhotoURL: currentUser.photoURL ?? "",
         provider,
         signalStrength,
         networkType,

@@ -4,8 +4,12 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 export type UserProfile = {
   uid: string;
   name: string;
+  displayName?: string;
   email: string;
   location: string;
+  photoURL?: string | null;
+  reportsCount?: number;
+  createdAt?: any;
   isAdmin?: boolean;
 };
 
@@ -20,8 +24,12 @@ export async function upsertUserProfile(profile: UserProfile) {
     ref,
     {
       name: profile.name,
+      displayName: profile.displayName ?? profile.name,
       email: profile.email,
       location: profile.location,
+      photoURL: profile.photoURL ?? null,
+      reportsCount: typeof profile.reportsCount === "number" ? profile.reportsCount : 0,
+      createdAt: serverTimestamp(),
       isAdmin: !!profile.isAdmin,
       updatedAt: serverTimestamp(),
     },
@@ -37,8 +45,12 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   return {
     uid,
     name: data.name ?? "User",
+    displayName: data.displayName ?? data.name ?? "User",
     email: data.email ?? "",
     location: data.location ?? "",
+    photoURL: data.photoURL ?? null,
+    reportsCount: Number(data.reportsCount ?? 0),
+    createdAt: data.createdAt,
     isAdmin: !!data.isAdmin,
   };
 }

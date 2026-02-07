@@ -11,8 +11,8 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if isAdmin() || request.auth.uid == uid;
-      allow write: if request.auth.uid == uid;
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
     }
 
     match /network_reports/{reportId} {
@@ -21,7 +21,8 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
 
       allow read: if isAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid);
+        || (signedIn() && resource.data.userId == request.auth.uid)
+        || (signedIn() && resource.data.userEmail == request.auth.token.email);
 
       allow update: if isAdmin()
         || (signedIn()
