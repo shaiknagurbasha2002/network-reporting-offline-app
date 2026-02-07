@@ -105,6 +105,13 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                   Report Issue
                 </Button>
               </motion.div>
+              <Button
+                onClick={() => onNavigate('profile')}
+                variant="outline"
+                className="border-2"
+              >
+                My Profile
+              </Button>
               <Button onClick={onLogout} variant="outline" className="border-2">
                 Logout
               </Button>
@@ -136,6 +143,13 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                 <Signal className="w-4 h-4" />
                 Report Issue
               </Button>
+                <Button
+                  onClick={() => { onNavigate('profile'); setMobileMenuOpen(false); }}
+                  variant="outline"
+                  className="w-full"
+                >
+                  My Profile
+                </Button>
               <Button onClick={onLogout} variant="outline" className="w-full">
                 Logout
               </Button>

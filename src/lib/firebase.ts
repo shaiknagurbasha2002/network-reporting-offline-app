@@ -1,6 +1,7 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, type Auth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
@@ -22,12 +23,16 @@ export const isFirebaseConfigured = Boolean(
 
 let _app: FirebaseApp | null = null;
 let _auth: Auth | null = null;
+let _googleProvider: GoogleAuthProvider | null = null;
 let _db: Firestore | null = null;
+let _storage: FirebaseStorage | null = null;
 
 if (isFirebaseConfigured) {
   _app = initializeApp(firebaseConfig as any);
   _auth = getAuth(_app);
+  _googleProvider = new GoogleAuthProvider();
   _db = getFirestore(_app);
+  _storage = getStorage(_app);
 } else {
   // Avoid crashing into a blank page when .env isn't configured yet.
   console.warn(
@@ -38,3 +43,5 @@ if (isFirebaseConfigured) {
 export const app = _app;
 export const auth = _auth;
 export const db = _db;
+export const googleProvider = _googleProvider;
+export const storage = _storage;

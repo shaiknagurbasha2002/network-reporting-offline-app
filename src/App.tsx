@@ -8,6 +8,7 @@ import ReportIssuePage from "./components/ReportIssuePage"; // ✅ old beautiful
 import { UserDashboard } from "./components/UserDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { AboutPage } from "./components/AboutPage";
+import { ProfilePage } from "./components/ProfilePage";
 import { listenAuth, logOut } from "@/lib/authService";
 import { getUserProfile, upsertUserProfile } from "@/lib/userService";
 import { subscribeReports, type NetworkReport } from "@/lib/reportsService";
@@ -18,6 +19,7 @@ type Page =
   | "adminLogin"
   | "report"
   | "dashboard"
+  | "profile"
   | "admin"
   | "about";
 
@@ -144,15 +146,16 @@ export default function App() {
       setCurrentPage("adminLogin");
       return;
     }
-    if ((page === "dashboard" || page === "report") && !user) {
+    if ((page === "dashboard" || page === "report" || page === "profile") && !user) {
       setCurrentPage("login");
       return;
     }
     setCurrentPage(page);
   };
 
-  const handleLogin = (userData: User) => {
+  const handleLogin = (userData: User, redirectTo: "dashboard" | "admin") => {
     setUser(userData);
+    setCurrentPage(redirectTo);
   };
 
   const handleLogout = () => {
@@ -272,6 +275,19 @@ export default function App() {
               onLogout={handleLogout}
               onSpeedTestComplete={handleSpeedTestComplete}
             />
+          </motion.div>
+        )}
+
+        {currentPage === "profile" && (
+          <motion.div
+            key="profile"
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={pageTransition}
+          >
+            <ProfilePage onNavigate={handleNavigate} />
           </motion.div>
         )}
 

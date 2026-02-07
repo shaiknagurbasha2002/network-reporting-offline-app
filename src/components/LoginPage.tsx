@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -7,24 +7,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Signal, ArrowLeft, Shield, Sparkles, UserPlus, LogIn } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner@2.0.3";
-import { signIn, signUp } from "@/lib/authService";
-import { getUserProfile, upsertUserProfile } from "@/lib/userService";
 
-// ✅ Google Auth (production-safe redirect flow)
-import {
-  GoogleAuthProvider,
-  getAuth,
-  getRedirectResult,
-  signInWithRedirect,
-} from "firebase/auth";
+import { googleSignIn, googleSignUp, logOut, signIn, signUp } from "@/lib/authService";
+import { getAdminOnce } from "@/lib/adminService";
+
+import { getUserProfileOnce, upsertUserProfile } from "@/lib/userService";
+
+import type { User } from "firebase/auth";
 
 interface LoginPageProps {
   onNavigate: (page: string) => void;
-  onLogin: (userData: { name: string; email: string; location: string; isAdmin?: boolean }) => void;
+  onLogin: (
+    userData: { name: string; email: string; location: string; isAdmin?: boolean },
+    redirectTo: "dashboard" | "admin"
+  ) => void;
   isAdminLogin: boolean;
 }
 
 export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps) {
+  const [tab, setTab] = useState<"login" | "signup">("login");
+
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
@@ -33,65 +35,64 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
   const [signupPassword, setSignupPassword] = useState("");
   const [signupLocation, setSignupLocation] = useState("");
 
-  const auth = getAuth();
-  const googleProvider = new GoogleAuthProvider();
+  const handleGoogleAuth = async (mode: "login" | "signup") => {
+    try {
+      const cred = mode === "signup" ? await googleSignUp() : await googleSignIn();
+      const fbUser: User | null = cred.user ?? null;
 
-  // ✅ Handle Google redirect result (runs after returning from Google)
-  useEffect(() => {
-    getRedirectResult(auth)
-      .then(async (result) => {
-        if (!result?.user) return;
+      if (!fbUser) {
+        toast.error("Google login failed");
+        return;
+      }
 
-        const fbUser = result.user;
+      const existing = await getUserProfileOnce(fbUser.uid);
 
-        // Load profile; create one if missing
-        const existing = await getUserProfile(fbUser.uid);
+      const profile = existing ?? {
+        uid: fbUser.uid,
+        name:
+          fbUser.displayName ||
+          (fbUser.email ? fbUser.email.split("@")[0] : "User"),
+        email: fbUser.email ?? "",
+        location: existing?.location ?? "Newark, NJ",
+        isAdmin: !!existing?.isAdmin,
+      };
 
-        const profile = existing ?? {
-          uid: fbUser.uid,
-          name:
-            fbUser.displayName ||
-            (fbUser.email ? fbUser.email.split("@")[0] : "User"),
-          email: fbUser.email ?? "",
-          location: existing?.location ?? "Newark, NJ",
-          isAdmin: !!existing?.isAdmin,
-        };
+      if (!existing) {
+        await upsertUserProfile(profile);
+      }
 
-        if (!existing) {
-          await upsertUserProfile(profile);
-        }
+      const isAdminUser = await getAdminOnce(fbUser.uid);
+      if (isAdminLogin && !isAdminUser) {
+        toast.error("This account is not an admin.");
+        return;
+      }
 
-        // If this is admin-only login page, block non-admins
-        if (isAdminLogin && !profile.isAdmin) {
-          toast.error("This account is not an admin.");
-          return;
-        }
+      if (mode === "signup") {
+        await logOut();
+        toast.success("Account created with Google. Please login.");
+        setTab("login");
+        return;
+      }
 
-        onLogin({
+      onLogin(
+        {
           name: profile.name,
           email: profile.email,
           location: profile.location,
-          isAdmin: !!profile.isAdmin,
-        });
+          isAdmin: isAdminUser,
+        },
+        isAdminLogin ? "admin" : "dashboard"
+      );
 
-        toast.success(isAdminLogin ? "Welcome, Admin!" : "Logged in with Google!");
-        onNavigate(isAdminLogin ? "admin" : "dashboard");
-      })
-      .catch((err: any) => {
-        console.error("Google redirect result error:", err);
-        toast.error(err?.message ?? "Google login failed");
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleGoogleLogin = async () => {
-    try {
-      await signInWithRedirect(auth, googleProvider);
+      toast.success(isAdminLogin ? "Welcome, Admin!" : "Logged in with Google!");
     } catch (err: any) {
-      console.error("Google login start error:", err);
+      console.error("Google auth error:", err);
       toast.error(err?.message ?? "Google login failed");
     }
   };
+
+  const handleGoogleLogin = () => handleGoogleAuth("login");
+  const handleGoogleSignup = () => handleGoogleAuth("signup");
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,23 +102,25 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
         const cred = await signIn(loginEmail, loginPassword);
         const fbUser = cred.user;
 
-        const profile = await getUserProfile(fbUser.uid);
-        const isAdmin = !!profile?.isAdmin;
+        const profile = await getUserProfileOnce(fbUser.uid);
+        const isAdmin = await getAdminOnce(fbUser.uid);
 
         if (isAdminLogin && !isAdmin) {
           toast.error("This account is not an admin.");
           return;
         }
 
-        onLogin({
-          name: profile?.name ?? (fbUser.email ? fbUser.email.split("@")[0] : "User"),
-          email: fbUser.email ?? loginEmail,
-          location: profile?.location ?? "",
-          isAdmin,
-        });
+        onLogin(
+          {
+            name: profile?.name ?? (fbUser.email ? fbUser.email.split("@")[0] : "User"),
+            email: fbUser.email ?? loginEmail,
+            location: profile?.location ?? "",
+            isAdmin,
+          },
+          isAdminLogin ? "admin" : "dashboard"
+        );
 
         toast.success(isAdminLogin ? "Welcome, Admin!" : "Login successful!");
-        onNavigate(isAdminLogin ? "admin" : "dashboard");
       } catch (err: any) {
         console.error(err);
         toast.error(err?.message ?? "Login failed");
@@ -143,15 +146,9 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
 
         await upsertUserProfile(profile);
 
-        onLogin({
-          name: profile.name,
-          email: profile.email,
-          location: profile.location,
-          isAdmin: false,
-        });
-
-        toast.success("Account created successfully!");
-        onNavigate("dashboard");
+        // ✅ Your requested behavior: after signup → go to login (not dashboard)
+        toast.success("Account created successfully! Please login.");
+        setTab("login");
       } catch (err: any) {
         console.error(err);
         toast.error(err?.message ?? "Signup failed");
@@ -165,19 +162,12 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
           className="absolute top-20 left-10 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.2, 1],
-            x: [0, 100, 0],
-            y: [0, 50, 0],
-          }}
+          animate={{ scale: [1, 1.2, 1], x: [0, 100, 0], y: [0, 50, 0] }}
           transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
         />
         <motion.div
           className="absolute bottom-20 right-10 w-80 h-80 bg-purple-400/20 rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.3, 1],
-            x: [0, -80, 0],
-          }}
+          animate={{ scale: [1, 1.3, 1], x: [0, -80, 0] }}
           transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
         />
         <motion.div
@@ -238,6 +228,7 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
                 />
               </motion.div>
             )}
+
             <div>
               <span className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 NetPulse
@@ -273,12 +264,8 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
           )}
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-        >
-          <Tabs defaultValue="login" className="w-full">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as "login" | "signup")} className="w-full">
             {!isAdminLogin && (
               <TabsList className="grid w-full grid-cols-2 mb-6 p-1 bg-white/80 backdrop-blur-sm border-2">
                 <TabsTrigger
@@ -357,9 +344,7 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
                           <span className="w-full border-t-2" />
                         </div>
                         <div className="relative flex justify-center text-sm">
-                          <span className="bg-white px-3 text-gray-500 font-medium">
-                            Or continue with
-                          </span>
+                          <span className="bg-white px-3 text-gray-500 font-medium">Or continue with</span>
                         </div>
                       </div>
 
@@ -475,9 +460,7 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
                         <span className="w-full border-t-2" />
                       </div>
                       <div className="relative flex justify-center text-sm">
-                        <span className="bg-white px-3 text-gray-500 font-medium">
-                          Or continue with
-                        </span>
+                        <span className="bg-white px-3 text-gray-500 font-medium">Or continue with</span>
                       </div>
                     </div>
 
@@ -486,7 +469,7 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
                         type="button"
                         variant="outline"
                         className="w-full border-2 h-12 hover:bg-gray-50"
-                        onClick={handleGoogleLogin}
+                        onClick={handleGoogleSignup}
                       >
                         <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                           <path

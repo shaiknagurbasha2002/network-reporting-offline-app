@@ -42,3 +42,8 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     isAdmin: !!data.isAdmin,
   };
 }
+
+// Backwards-compatible export for older imports
+export async function getUserProfileOnce(uid: string): Promise<UserProfile | null> {
+  return getUserProfile(uid);
+}
