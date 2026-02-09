@@ -1,0 +1,10 @@
+node_modules/
+build/
+.vite/
+
+functions/lib/
+
+android/app/google-services.json
+google-services.json
+
+node_modules/@capacitor/android/capacitor/build/
