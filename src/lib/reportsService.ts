@@ -11,6 +11,7 @@ import {
   setDoc,
   increment,
   where,
+  limit,
   QuerySnapshot,
   DocumentData,
 } from "firebase/firestore";
@@ -155,43 +156,95 @@ export function subscribeReports(cb: (reports: NetworkReport[]) => void) {
 export function subscribeUserReports(
   uid: string,
   email: string | null | undefined,
-  cb: (reports: NetworkReport[]) => void
+  cb: (reports: NetworkReport[]) => void,
+  maxRows?: number
 ) {
-  const qPrimary = query(
-    collection(requireDb(), "network_reports"),
+  const primaryConstraints = [
     where("userId", "==", uid),
-    orderBy("createdAt", "desc")
-  );
+  ];
+  if (typeof maxRows === "number" && maxRows > 0) {
+    primaryConstraints.push(limit(maxRows));
+  }
+  const qPrimary = query(collection(requireDb(), "network_reports"), ...primaryConstraints);
+
   const qPrimaryByEmail = email
-    ? query(
-        collection(requireDb(), "network_reports"),
-        where("userEmail", "==", email),
-        orderBy("createdAt", "desc")
-      )
+    ? (() => {
+        const emailConstraints = [
+          where("userEmail", "==", email),
+        ];
+        if (typeof maxRows === "number" && maxRows > 0) {
+          emailConstraints.push(limit(maxRows));
+        }
+        return query(collection(requireDb(), "network_reports"), ...emailConstraints);
+      })()
     : null;
-  const qLegacy = query(
-    collection(requireDb(), "reports"),
+  const qPrimaryByLegacyEmail = email
+    ? (() => {
+        const legacyEmailConstraints = [
+          where("email", "==", email),
+        ];
+        if (typeof maxRows === "number" && maxRows > 0) {
+          legacyEmailConstraints.push(limit(maxRows));
+        }
+        return query(collection(requireDb(), "network_reports"), ...legacyEmailConstraints);
+      })()
+    : null;
+
+  const legacyConstraints = [
     where("userId", "==", uid),
-    orderBy("createdAt", "desc")
-  );
+  ];
+  if (typeof maxRows === "number" && maxRows > 0) {
+    legacyConstraints.push(limit(maxRows));
+  }
+  const qLegacy = query(collection(requireDb(), "reports"), ...legacyConstraints);
+
   const qLegacyByEmail = email
-    ? query(
-        collection(requireDb(), "reports"),
-        where("userEmail", "==", email),
-        orderBy("createdAt", "desc")
-      )
+    ? (() => {
+        const legacyEmailConstraints = [
+          where("userEmail", "==", email),
+        ];
+        if (typeof maxRows === "number" && maxRows > 0) {
+          legacyEmailConstraints.push(limit(maxRows));
+        }
+        return query(collection(requireDb(), "reports"), ...legacyEmailConstraints);
+      })()
+    : null;
+  const qLegacyByLegacyEmail = email
+    ? (() => {
+        const legacyEmailConstraints = [
+          where("email", "==", email),
+        ];
+        if (typeof maxRows === "number" && maxRows > 0) {
+          legacyEmailConstraints.push(limit(maxRows));
+        }
+        return query(collection(requireDb(), "reports"), ...legacyEmailConstraints);
+      })()
     : null;
 
   let primaryRows: NetworkReport[] = [];
   let primaryEmailRows: NetworkReport[] = [];
+  let primaryLegacyEmailRows: NetworkReport[] = [];
   let legacyRows: NetworkReport[] = [];
   let legacyEmailRows: NetworkReport[] = [];
+  let legacyLegacyEmailRows: NetworkReport[] = [];
 
   const emit = () => {
-    const merged = [...primaryRows, ...primaryEmailRows, ...legacyRows, ...legacyEmailRows];
+    const merged = [
+      ...primaryRows,
+      ...primaryEmailRows,
+      ...primaryLegacyEmailRows,
+      ...legacyRows,
+      ...legacyEmailRows,
+      ...legacyLegacyEmailRows,
+    ];
     const unique = new Map<string, NetworkReport>();
     merged.forEach((row) => unique.set(row.id, row));
-    cb(Array.from(unique.values()));
+    const sorted = Array.from(unique.values()).sort((a, b) => {
+      const aTime = Date.parse(a.timestamp || "") || 0;
+      const bTime = Date.parse(b.timestamp || "") || 0;
+      return bTime - aTime;
+    });
+    cb(sorted);
   };
 
   const unsubPrimary = onSnapshot(
@@ -217,6 +270,20 @@ export function subscribeUserReports(
         (err) => {
           console.error("[subscribeUserReports:email]", err);
           primaryEmailRows = [];
+          emit();
+        }
+      )
+    : null;
+  const unsubPrimaryByLegacyEmail = qPrimaryByLegacyEmail
+    ? onSnapshot(
+        qPrimaryByLegacyEmail,
+        (snap) => {
+          primaryLegacyEmailRows = mapReportSnapshot(snap, "network_reports");
+          emit();
+        },
+        (err) => {
+          console.error("[subscribeUserReports:legacyEmailField]", err);
+          primaryLegacyEmailRows = [];
           emit();
         }
       )
@@ -249,12 +316,28 @@ export function subscribeUserReports(
         }
       )
     : null;
+  const unsubLegacyByLegacyEmail = qLegacyByLegacyEmail
+    ? onSnapshot(
+        qLegacyByLegacyEmail,
+        (snap) => {
+          legacyLegacyEmailRows = mapReportSnapshot(snap, "reports");
+          emit();
+        },
+        (err) => {
+          console.error("[subscribeUserReports:legacyEmailField:legacy]", err);
+          legacyLegacyEmailRows = [];
+          emit();
+        }
+      )
+    : null;
 
   return () => {
     unsubPrimary();
     if (unsubPrimaryByEmail) unsubPrimaryByEmail();
+    if (unsubPrimaryByLegacyEmail) unsubPrimaryByLegacyEmail();
     unsubLegacy();
     if (unsubLegacyByEmail) unsubLegacyByEmail();
+    if (unsubLegacyByLegacyEmail) unsubLegacyByLegacyEmail();
   };
 }
 

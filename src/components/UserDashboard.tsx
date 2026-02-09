@@ -1,16 +1,18 @@
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Progress } from "./ui/progress";
 import { Signal, Award, Trophy, ArrowLeft, Menu, X, Sparkles } from "lucide-react";
 import { SpeedTestMeter } from "./SpeedTestMeter";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { subscribeLeaderboard, type LeaderboardEntry } from "@/lib/leaderboardService";
+import { subscribeUserReports } from "@/lib/reportsService";
+import { setUserReportsCount } from "@/lib/userService";
 
 interface Report {
-  id: number;
+  id: string;
   provider: string;
   issueType: string;
   location: string;
@@ -26,7 +28,7 @@ interface SpeedTestResult {
 
 interface UserDashboardProps {
   onNavigate: (page: string) => void;
-  user: { name: string; email: string; location: string } | null;
+  user: { uid: string; name: string; email: string; location: string; photoURL?: string | null } | null;
   userReports: Report[];
   onLogout: () => void;
   onSpeedTestComplete?: (result: SpeedTestResult) => void;
@@ -43,7 +45,10 @@ const badges = [
 export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeedTestComplete }: UserDashboardProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardEntry[]>([]);
-  const userPoints = userReports.length * 10;
+  const [recentReports, setRecentReports] = useState<Report[]>([]);
+  const lastCountRef = useRef<number | null>(null);
+  const totalReports = recentReports.length;
+  const userPoints = totalReports * 10;
   const earnedBadges = badges.filter(b => b.earned);
   const nextLevel = Math.ceil(userPoints / 100) * 100;
   const progressToNextLevel = ((userPoints % 100) / 100) * 100;
@@ -52,6 +57,31 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
     const unsub = subscribeLeaderboard(setLeaderboardRows, 10);
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    const uid = user?.uid;
+    const email = user?.email;
+    if (!uid) {
+      setRecentReports([]);
+      return;
+    }
+    const unsub = subscribeUserReports(uid, email, (rows) => {
+      const mapped = rows.map((r) => ({
+        id: r.id,
+        provider: r.provider || "Unknown",
+        issueType: r.issueType || "Unknown",
+        location: r.location || "Unknown",
+        timestamp: r.timestamp || new Date().toISOString(),
+      }));
+      setRecentReports(mapped);
+
+      if (lastCountRef.current !== mapped.length) {
+        lastCountRef.current = mapped.length;
+        setUserReportsCount(uid, mapped.length).catch(console.error);
+      }
+    });
+    return () => unsub();
+  }, [user?.uid, user?.email]);
 
   const leaderboard = useMemo(
     () =>
@@ -182,6 +212,7 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                 <div className="flex flex-col items-center text-center">
                   <motion.div whileHover={{ scale: 1.1, rotate: 360 }} transition={{ duration: 0.6 }}>
                     <Avatar className="w-24 h-24 mb-4 border-4 border-blue-200 shadow-lg">
+                      <AvatarImage src={user?.photoURL ?? ""} alt={user?.name || "User"} />
                       <AvatarFallback className="bg-gradient-to-br from-blue-600 to-purple-600 text-white text-2xl">
                         {user?.name.split(' ').map(n => n[0]).join('') || 'U'}
                       </AvatarFallback>
@@ -221,7 +252,7 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                       className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border-2 border-blue-200"
                       whileHover={{ scale: 1.05 }}
                     >
-                      <div className="text-3xl font-bold text-blue-600 mb-1">{userReports.length}</div>
+                      <div className="text-3xl font-bold text-blue-600 mb-1">{totalReports}</div>
                       <p className="text-xs text-gray-600 font-medium">Reports</p>
                     </motion.div>
                     <motion.div 
@@ -290,7 +321,7 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
             >
               <Card className="p-6 bg-white/80 backdrop-blur-sm border-2 shadow-xl">
                 <h2 className="text-2xl font-bold mb-4">Recent Reports</h2>
-                {userReports.length === 0 ? (
+                {recentReports.length === 0 ? (
                   <div className="text-center py-12">
                     <motion.div
                       animate={{ y: [0, -10, 0] }}
@@ -309,7 +340,7 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {userReports.slice(0, 5).map((report, index) => (
+                    {recentReports.map((report, index) => (
                       <motion.div 
                         key={report.id}
                         initial={{ opacity: 0, x: -10 }}
@@ -323,10 +354,10 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate text-gray-800">
-                            {report.issueType.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                            {report.issueType?.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase()) || "Unknown Issue"}
                           </p>
                           <p className="text-sm text-gray-600 truncate">
-                            📍 {report.location} • {report.provider}
+                            📍 {report.location || "Unknown"} • {report.provider || "Unknown"}
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -343,6 +374,7 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                 )}
               </Card>
             </motion.div>
+
 
             {/* Leaderboard and Speed Test */}
             <div className="grid md:grid-cols-2 gap-4 md:gap-6">
@@ -390,7 +422,7 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
                               <Badge variant="outline" className="text-xs bg-blue-50">You</Badge>
                             )}
                           </p>
-                          <p className="text-sm text-gray-600">{entry.reports} reports</p>
+                          <p className="text-sm text-gray-600">&nbsp;</p>
                         </div>
                         <div className="font-bold text-blue-600 shrink-0">{entry.points}</div>
                       </motion.div>

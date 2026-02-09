@@ -55,6 +55,18 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   };
 }
 
+export async function setUserReportsCount(uid: string, count: number) {
+  const ref = doc(requireDb(), "users", uid);
+  await setDoc(
+    ref,
+    {
+      reportsCount: count,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 // Backwards-compatible export for older imports
 export async function getUserProfileOnce(uid: string): Promise<UserProfile | null> {
   return getUserProfile(uid);

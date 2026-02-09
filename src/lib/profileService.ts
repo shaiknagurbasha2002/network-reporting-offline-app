@@ -19,6 +19,8 @@ export type UserProfile = {
   displayName?: string | null;
   photoURL?: string | null;
   bio?: string | null;
+  location?: string | null;
+  reportsCount?: number;
   updatedAt?: any;
 };
 
@@ -56,11 +58,12 @@ function buildDefaultProfile(uid: string): UserProfile {
     displayName,
     photoURL: auth?.currentUser?.photoURL ?? null,
     bio: "",
+    reportsCount: 0,
     updatedAt: serverTimestamp(),
   };
 }
 
-async function ensureUserProfile(uid: string) {
+export async function ensureUserDoc(uid: string) {
   const refDoc = doc(requireDb(), "users", uid);
   const snap = await getDoc(refDoc);
   if (snap.exists()) return;
@@ -73,6 +76,7 @@ async function ensureUserProfile(uid: string) {
       displayName: baseProfile.displayName ?? null,
       photoURL: baseProfile.photoURL ?? null,
       bio: baseProfile.bio ?? "",
+      reportsCount: 0,
       updatedAt: serverTimestamp(),
     },
     { merge: true }
@@ -80,7 +84,7 @@ async function ensureUserProfile(uid: string) {
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  await ensureUserProfile(uid);
+  await ensureUserDoc(uid);
   const refDoc = doc(requireDb(), "users", uid);
   const snap = await getDoc(refDoc);
   if (!snap.exists()) return null;
@@ -91,6 +95,8 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     displayName: data.displayName ?? null,
     photoURL: data.photoURL ?? null,
     bio: data.bio ?? "",
+    location: data.location ?? null,
+    reportsCount: Number(data.reportsCount ?? 0),
     updatedAt: data.updatedAt,
   };
 }
@@ -110,7 +116,7 @@ export function subscribeUserProfile(uid: string, cb: (profile: UserProfile | nu
     async (snap) => {
       if (!snap.exists()) {
         try {
-          await ensureUserProfile(uid);
+          await ensureUserDoc(uid);
         } catch (err) {
           console.error("[subscribeUserProfile] create error:", err);
         }
@@ -124,6 +130,8 @@ export function subscribeUserProfile(uid: string, cb: (profile: UserProfile | nu
         displayName: data.displayName ?? null,
         photoURL: data.photoURL ?? null,
         bio: data.bio ?? "",
+        location: data.location ?? null,
+        reportsCount: Number(data.reportsCount ?? 0),
         updatedAt: data.updatedAt,
       });
     },
@@ -132,6 +140,34 @@ export function subscribeUserProfile(uid: string, cb: (profile: UserProfile | nu
       cb(null);
     }
   );
+}
+
+export async function updateUserProfile(params: {
+  uid: string;
+  displayName?: string;
+  bio?: string;
+  photoURL?: string | null;
+  email?: string;
+}) {
+  const refDoc = doc(requireDb(), "users", params.uid);
+  await setDoc(
+    refDoc,
+    {
+      email: params.email ?? auth?.currentUser?.email ?? "",
+      displayName: params.displayName ?? auth?.currentUser?.displayName ?? null,
+      photoURL: params.photoURL ?? auth?.currentUser?.photoURL ?? null,
+      bio: params.bio ?? "",
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  if (auth?.currentUser && auth.currentUser.uid === params.uid) {
+    await updateProfile(auth.currentUser, {
+      displayName: params.displayName ?? auth.currentUser.displayName ?? undefined,
+      photoURL: params.photoURL ?? auth.currentUser.photoURL ?? undefined,
+    });
+  }
 }
 
 export async function uploadProfilePic(
@@ -143,13 +179,23 @@ export async function uploadProfilePic(
     throw new Error("Please upload a JPG, PNG, or WEBP image.");
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("Image must be 2MB or smaller.");
+    throw new Error("Image must be 10MB or smaller.");
   }
 
   const fileRef = ref(requireStorage(), `profilePics/${uid}`);
   const task = uploadBytesResumable(fileRef, file, { contentType: file.type });
+  const timeoutMs = 60000;
 
   await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {
+        task.cancel();
+      } catch {
+        // ignore cancel errors
+      }
+      reject(new Error("Upload timed out. Please try again."));
+    }, timeoutMs);
+
     task.on(
       "state_changed",
       (snap) => {
@@ -158,8 +204,14 @@ export async function uploadProfilePic(
           : 0;
         onProgress?.(pct);
       },
-      (err) => reject(err),
-      () => resolve()
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve();
+      }
     );
   });
   const url = await getDownloadURL(fileRef);

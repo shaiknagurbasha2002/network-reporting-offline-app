@@ -13,6 +13,7 @@ import { listenAuth, logOut } from "@/lib/authService";
 import { getUserProfile, upsertUserProfile } from "@/lib/userService";
 import { subscribeReports, subscribeUserReports, type NetworkReport } from "@/lib/reportsService";
 import { auth } from "@/lib/firebase";
+import { ensureUserDoc, subscribeUserProfile } from "@/lib/profileService";
 
 type Page =
   | "home"
@@ -25,9 +26,12 @@ type Page =
   | "about";
 
 interface User {
+  uid: string;
   name: string;
   email: string;
   location: string;
+  photoURL?: string | null;
+  reportsCount?: number;
   isAdmin?: boolean;
 }
 
@@ -73,6 +77,7 @@ export default function App() {
       }
 
       setAuthUid(fbUser.uid);
+      ensureUserDoc(fbUser.uid).catch(console.error);
 
       // Profile stored in Firestore under users/{uid}
       const profile = await getUserProfile(fbUser.uid);
@@ -95,16 +100,22 @@ export default function App() {
         await upsertUserProfile(newProfile);
         if (cancelled) return;
         setUser({
+          uid: fbUser.uid,
           name: newProfile.name,
           email: newProfile.email,
           location: newProfile.location,
+          photoURL: newProfile.photoURL ?? null,
+          reportsCount: newProfile.reportsCount ?? 0,
           isAdmin: newProfile.isAdmin,
         });
       } else {
         setUser({
+          uid: fbUser.uid,
           name: profile.name,
           email: profile.email || email,
           location: profile.location,
+          photoURL: profile.photoURL ?? null,
+          reportsCount: profile.reportsCount ?? 0,
           isAdmin: !!profile.isAdmin,
         });
       }
@@ -115,6 +126,23 @@ export default function App() {
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    if (!authUid) return;
+    const unsub = subscribeUserProfile(authUid, (profile) => {
+      if (!profile) return;
+      setUser((prev) => ({
+        uid: authUid,
+        name: profile.displayName ?? prev?.name ?? "User",
+        email: profile.email ?? prev?.email ?? "",
+        location: prev?.location ?? "",
+        photoURL: profile.photoURL ?? prev?.photoURL ?? null,
+        reportsCount: profile.reportsCount ?? prev?.reportsCount ?? 0,
+        isAdmin: prev?.isAdmin ?? false,
+      }));
+    });
+    return () => unsub();
+  }, [authUid]);
 
     // Load reports + subscribe for real-time updates (Firestore)
   useEffect(() => {

@@ -9,7 +9,7 @@ import { Textarea } from "./ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { ArrowLeft, Upload } from "lucide-react";
 import {
-  saveUserBio,
+  updateUserProfile,
   subscribeUserProfile,
   uploadProfilePic,
   type UserProfile,
@@ -23,6 +23,7 @@ interface ProfilePageProps {
 export function ProfilePage({ onNavigate }: ProfilePageProps) {
   const { user: authUser } = useAuthUser();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const isDirtyRef = useRef(false);
@@ -42,6 +43,7 @@ export function ProfilePage({ onNavigate }: ProfilePageProps) {
     const unsub = subscribeUserProfile(authUser.uid, (p) => {
       setProfile(p);
       if (!isDirtyRef.current) {
+        setDisplayName(p?.displayName ?? authUser.displayName ?? "");
         setBio(p?.bio ?? "");
       }
     });
@@ -65,11 +67,22 @@ export function ProfilePage({ onNavigate }: ProfilePageProps) {
     isDirtyRef.current = true;
   };
 
+  const handleNameChange = (value: string) => {
+    setDisplayName(value);
+    setIsDirty(true);
+    isDirtyRef.current = true;
+  };
+
   const handleSave = async () => {
     if (!authUser?.uid) return;
     try {
       setSaving(true);
-      await saveUserBio(authUser.uid, bio);
+      await updateUserProfile({
+        uid: authUser.uid,
+        displayName: displayName.trim() || authUser.displayName || authUser.email || "User",
+        bio,
+        email: authUser.email ?? "",
+      });
       setIsDirty(false);
       isDirtyRef.current = false;
       toast.success("Profile updated");
@@ -173,6 +186,16 @@ export function ProfilePage({ onNavigate }: ProfilePageProps) {
                 <div>
                   <Label className="text-base font-semibold">Email</Label>
                   <Input value={profile?.email ?? authUser.email ?? ""} readOnly className="mt-2" />
+                </div>
+
+                <div>
+                  <Label className="text-base font-semibold">Name</Label>
+                  <Input
+                    value={displayName}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    className="mt-2"
+                    placeholder="Your name"
+                  />
                 </div>
 
                 <div>
