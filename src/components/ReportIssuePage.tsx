@@ -76,19 +76,19 @@ export default function ReportIssuePage({
       const currentUser = auth?.currentUser;
       if (!currentUser) throw new Error("Please log in first.");
 
+      const signalStrengthNum = Number(signalStrength || 0);
       const reportToSave = {
         userId: currentUser.uid,
-        userName: user?.name || "Anonymous",
-        userEmail: currentUser.email || user?.email || "",
+        userName: user?.name || undefined,
+        userEmail: currentUser.email || user?.email || undefined,
         userPhotoURL: currentUser.photoURL ?? "",
         provider,
-        signalStrength,
+        signalStrength: Number.isFinite(signalStrengthNum) ? signalStrengthNum : 0,
         networkType,
         issueType,
         location,
         weather,
         comments,
-        timestamp: new Date().toISOString(),
       };
 
       const reportId = await createReport(reportToSave);
@@ -97,14 +97,17 @@ export default function ReportIssuePage({
         await createSpeedTest({
           reportId,
           userId: currentUser.uid,
-          downloadSpeed: speedTestResult.downloadSpeed,
-          uploadSpeed: speedTestResult.uploadSpeed,
-          ping: speedTestResult.ping,
-          timestamp: speedTestResult.timestamp,
+          downloadMbps: Number(speedTestResult.downloadSpeed ?? 0),
+          uploadMbps: Number(speedTestResult.uploadSpeed ?? 0),
+          pingMs: Number(speedTestResult.ping ?? 0),
         });
       }
 
-      const reportForUI = { id: reportId, ...reportToSave };
+      const reportForUI = {
+        id: reportId,
+        ...reportToSave,
+        timestamp: new Date().toISOString(),
+      };
       onSubmitReport(reportForUI);
       setSubmitted(true);
       toast.success("✅ Report submitted successfully! +10 points earned");

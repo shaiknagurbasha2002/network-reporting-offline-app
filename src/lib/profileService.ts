@@ -21,7 +21,10 @@ export type UserProfile = {
   bio?: string | null;
   location?: string | null;
   reportsCount?: number;
+  score?: number;
+  createdAt?: any;
   updatedAt?: any;
+  lastLoginAt?: any;
 };
 
 const MAX_BIO_LENGTH = 160;
@@ -59,7 +62,10 @@ function buildDefaultProfile(uid: string): UserProfile {
     photoURL: auth?.currentUser?.photoURL ?? null,
     bio: "",
     reportsCount: 0,
+    score: 0,
+    createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    lastLoginAt: serverTimestamp(),
   };
 }
 
@@ -77,7 +83,10 @@ export async function ensureUserDoc(uid: string) {
       photoURL: baseProfile.photoURL ?? null,
       bio: baseProfile.bio ?? "",
       reportsCount: 0,
+      score: 0,
+      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      lastLoginAt: serverTimestamp(),
     },
     { merge: true }
   );
@@ -97,7 +106,10 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     bio: data.bio ?? "",
     location: data.location ?? null,
     reportsCount: Number(data.reportsCount ?? 0),
+    score: Number(data.score ?? 0),
+    createdAt: data.createdAt,
     updatedAt: data.updatedAt,
+    lastLoginAt: data.lastLoginAt,
   };
 }
 
@@ -132,7 +144,10 @@ export function subscribeUserProfile(uid: string, cb: (profile: UserProfile | nu
         bio: data.bio ?? "",
         location: data.location ?? null,
         reportsCount: Number(data.reportsCount ?? 0),
+        score: Number(data.score ?? 0),
+        createdAt: data.createdAt,
         updatedAt: data.updatedAt,
+        lastLoginAt: data.lastLoginAt,
       });
     },
     (err) => {

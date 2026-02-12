@@ -11,7 +11,7 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if signedIn();
+      allow read: if signedIn() && request.auth.uid == uid;
       allow write: if signedIn() && request.auth.uid == uid;
     }
 
@@ -21,8 +21,7 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
 
       allow read: if isAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid)
-        || (signedIn() && resource.data.userEmail == request.auth.token.email);
+        || (signedIn() && resource.data.userId == request.auth.uid);
 
       allow update: if isAdmin()
         || (signedIn()
@@ -35,9 +34,7 @@ service cloud.firestore {
 
     match /reports/{reportId} {
       allow read: if isAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid)
-        || (signedIn() && resource.data.userEmail == request.auth.token.email)
-        || (signedIn() && resource.data.email == request.auth.token.email);
+        || (signedIn() && resource.data.userId == request.auth.uid);
     }
 
     match /speed_tests/{testId} {
@@ -62,10 +59,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /leaderboard_stats/{uid} {
-      allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == uid;
-      allow delete: if isAdmin();
+    match /leaderboard/{uid} {
+      allow read: if true;
+      allow write: if signedIn() && request.auth.uid == uid;
     }
   }
 }

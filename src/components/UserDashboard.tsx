@@ -71,7 +71,7 @@ export function UserDashboard({ onNavigate, user, userReports, onLogout, onSpeed
         provider: r.provider || "Unknown",
         issueType: r.issueType || "Unknown",
         location: r.location || "Unknown",
-        timestamp: r.timestamp || new Date().toISOString(),
+        timestamp: r.createdAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
       }));
       setRecentReports(mapped);
 

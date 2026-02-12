@@ -14,6 +14,7 @@ export type LeaderboardEntry = {
   email?: string;
   photoURL?: string | null;
   reportsCount: number;
+  score?: number;
   createdAt?: any;
   updatedAt?: any;
 };
@@ -31,7 +32,7 @@ export function subscribeLeaderboard(
   maxRows = 50
 ) {
   const q = query(
-    collection(requireDb(), "users"),
+    collection(requireDb(), "leaderboard"),
     orderBy("reportsCount", "desc"),
     limit(maxRows)
   );
@@ -43,10 +44,11 @@ export function subscribeLeaderboard(
         const data: any = d.data();
         return {
           uid: d.id,
-          displayName: data.displayName ?? data.name ?? "User",
+          displayName: data.displayName ?? "User",
           email: data.email ?? "",
           photoURL: data.photoURL ?? null,
           reportsCount: Number(data.reportsCount ?? 0),
+          score: Number(data.score ?? 0),
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         };

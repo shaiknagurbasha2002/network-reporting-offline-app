@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -7,11 +7,16 @@ import { Signal, ArrowLeft, Download, TrendingUp, Users, CloudRain, BarChart3, L
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { motion } from "motion/react";
 import { toast } from "sonner@2.0.3";
+import {
+  subscribeAdminAnalytics,
+  type AdminAnalytics,
+  type AdminAnalyticsFilters,
+} from "@/lib/adminAnalyticsService";
 
 interface Report {
-  id: number;
+  id: string;
   provider: string;
-  signalStrength: string;
+  signalStrength: number;
   networkType: string;
   issueType: string;
   location: string;
@@ -26,61 +31,104 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-// Mock data for charts
-const reportsOverTime = [
-  { date: 'Oct 28', reports: 12 },
-  { date: 'Oct 29', reports: 19 },
-  { date: 'Oct 30', reports: 15 },
-  { date: 'Oct 31', reports: 25 },
-  { date: 'Nov 1', reports: 22 },
-  { date: 'Nov 2', reports: 30 },
+const PIE_COLORS = [
+  "#ef4444",
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#8b5cf6",
+  "#14b8a6",
+  "#f97316",
+  "#6366f1",
 ];
 
-const providerData = [
-  { name: 'Airtel', value: 30, color: '#ef4444' },
-  { name: 'Jio', value: 25, color: '#3b82f6' },
-  { name: 'Verizon', value: 20, color: '#10b981' },
-  { name: 'T-Mobile', value: 15, color: '#f59e0b' },
-  { name: 'AT&T', value: 10, color: '#8b5cf6' },
-];
+const emptyAnalytics: AdminAnalytics = {
+  reports: [],
+  totalReports: 0,
+  uniqueUsers: 0,
+  weatherReports: 0,
+  avgResponseMs: null,
+  reportsByProvider: {},
+  reportsByIssueType: {},
+  reportsByWeather: {},
+  reportsByDay: {},
+};
 
-const issueTypeData = [
-  { type: 'Call Drop', count: 45 },
-  { type: 'No Signal', count: 38 },
-  { type: 'Slow Internet', count: 52 },
-  { type: 'Intermittent', count: 28 },
-];
+function formatDuration(ms: number | null) {
+  if (!ms || ms <= 0) return "N/A";
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hrs`;
+}
 
-const weatherImpact = [
-  { weather: 'Sunny', reports: 25, avgSignal: 4.2 },
-  { weather: 'Cloudy', reports: 30, avgSignal: 3.8 },
-  { weather: 'Rainy', reports: 45, avgSignal: 2.5 },
-  { weather: 'Stormy', reports: 35, avgSignal: 1.8 },
-];
+function formatTimestamp(ts: any) {
+  const date = ts?.toDate?.() ?? null;
+  if (!date) return "—";
+  return date.toLocaleString();
+}
 
-export function AdminDashboard({ onNavigate, allReports, onLogout }: AdminDashboardProps) {
+export function AdminDashboard({ onNavigate, allReports: _allReports, onLogout }: AdminDashboardProps) {
   const [filterProvider, setFilterProvider] = useState("all");
   const [filterWeather, setFilterWeather] = useState("all");
   const [filterCity, setFilterCity] = useState("all");
+  const [filterRange, setFilterRange] = useState<AdminAnalyticsFilters["range"]>("30d");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [analytics, setAnalytics] = useState<AdminAnalytics>(emptyAnalytics);
 
-  const totalReports = allReports.length || 186;
-  const uniqueUsers = 342;
-  const avgResponseTime = "2.3 hrs";
+  useEffect(() => {
+    const filters: AdminAnalyticsFilters = {
+      provider: filterProvider,
+      weather: filterWeather,
+      city: filterCity,
+      range: filterRange,
+    };
+    const unsub = subscribeAdminAnalytics(filters, setAnalytics);
+    return () => unsub();
+  }, [filterProvider, filterWeather, filterCity, filterRange]);
+
+  const reportsOverTime = useMemo(() => {
+    return Object.entries(analytics.reportsByDay)
+      .filter(([key]) => key !== "unknown")
+      .sort(([a], [b]) => (a > b ? 1 : -1))
+      .map(([date, count]) => ({ date, reports: count }));
+  }, [analytics.reportsByDay]);
+
+  const providerData = useMemo(() => {
+    return Object.entries(analytics.reportsByProvider).map(([name, value], idx) => ({
+      name,
+      value,
+      color: PIE_COLORS[idx % PIE_COLORS.length],
+    }));
+  }, [analytics.reportsByProvider]);
+
+  const issueTypeData = useMemo(() => {
+    return Object.entries(analytics.reportsByIssueType).map(([type, count]) => ({
+      type,
+      count,
+    }));
+  }, [analytics.reportsByIssueType]);
+
+  const weatherImpact = useMemo(() => {
+    return Object.entries(analytics.reportsByWeather).map(([weather, reports]) => ({
+      weather,
+      reports,
+    }));
+  }, [analytics.reportsByWeather]);
 
   const handleDownloadCSV = () => {
     const csvContent = [
       ['ID', 'Date', 'Provider', 'Signal', 'Network Type', 'Issue Type', 'Location', 'Weather', 'User'],
-      ...allReports.map(r => [
+      ...analytics.reports.map(r => [
         r.id,
-        new Date(r.timestamp).toLocaleString(),
+        formatTimestamp(r.createdAt),
         r.provider,
         r.signalStrength,
         r.networkType,
         r.issueType,
         r.location,
         r.weather || 'N/A',
-        r.userName
+        r.userName ?? ""
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -213,10 +261,10 @@ export function AdminDashboard({ onNavigate, allReports, onLogout }: AdminDashbo
         {/* Stats Overview */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
           {[
-            { label: 'Total Reports', value: totalReports, trend: '↑ 12%', icon: BarChart3, gradient: 'from-blue-500 to-blue-600', bg: 'from-blue-50 to-blue-100', delay: 0.1 },
-            { label: 'Active Users', value: uniqueUsers, trend: '↑ 8%', icon: Users, gradient: 'from-purple-500 to-purple-600', bg: 'from-purple-50 to-purple-100', delay: 0.2 },
-            { label: 'Weather Reports', value: 124, trend: '67%', icon: CloudRain, gradient: 'from-green-500 to-emerald-600', bg: 'from-green-50 to-green-100', delay: 0.3 },
-            { label: 'Avg Response', value: avgResponseTime, trend: '↓ 15%', icon: TrendingUp, gradient: 'from-orange-500 to-orange-600', bg: 'from-orange-50 to-orange-100', delay: 0.4 }
+            { label: 'Total Reports', value: analytics.totalReports, icon: BarChart3, gradient: 'from-blue-500 to-blue-600', bg: 'from-blue-50 to-blue-100', delay: 0.1 },
+            { label: 'Active Users', value: analytics.uniqueUsers, icon: Users, gradient: 'from-purple-500 to-purple-600', bg: 'from-purple-50 to-purple-100', delay: 0.2 },
+            { label: 'Weather Reports', value: analytics.weatherReports, icon: CloudRain, gradient: 'from-green-500 to-emerald-600', bg: 'from-green-50 to-green-100', delay: 0.3 },
+            { label: 'Avg Response', value: formatDuration(analytics.avgResponseMs), icon: TrendingUp, gradient: 'from-orange-500 to-orange-600', bg: 'from-orange-50 to-orange-100', delay: 0.4 }
           ].map((stat, index) => (
             <motion.div
               key={index}
@@ -233,9 +281,6 @@ export function AdminDashboard({ onNavigate, allReports, onLogout }: AdminDashbo
                   </div>
                 </div>
                 <div className="text-3xl font-bold text-gray-900 mb-1">{stat.value}</div>
-                <p className="text-sm text-gray-600 flex items-center gap-1">
-                  {stat.trend} <span className="text-xs">from last week</span>
-                </p>
               </Card>
             </motion.div>
           ))}
@@ -300,6 +345,25 @@ export function AdminDashboard({ onNavigate, allReports, onLogout }: AdminDashbo
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Date Range</label>
+                <Select
+                  value={filterRange}
+                  onValueChange={(v) =>
+                    setFilterRange(v as AdminAnalyticsFilters["range"])
+                  }
+                >
+                  <SelectTrigger className="border-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7d">Last 7 days</SelectItem>
+                    <SelectItem value="30d">Last 30 days</SelectItem>
+                    <SelectItem value="90d">Last 90 days</SelectItem>
+                    <SelectItem value="all">All time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </Card>
         </motion.div>
@@ -309,75 +373,89 @@ export function AdminDashboard({ onNavigate, allReports, onLogout }: AdminDashbo
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
             <Card className="p-6 bg-white/80 backdrop-blur-sm border-2 shadow-xl">
               <h3 className="mb-4 text-xl font-bold">Reports Over Time</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={reportsOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" stroke="#6b7280" />
-                  <YAxis stroke="#6b7280" />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #3b82f6' }} />
-                  <Legend />
-                  <Line type="monotone" dataKey="reports" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', r: 5 }} />
-                </LineChart>
-              </ResponsiveContainer>
+              {reportsOverTime.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center text-gray-500">No data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={reportsOverTime}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #3b82f6' }} />
+                    <Legend />
+                    <Line type="monotone" dataKey="reports" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </Card>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
             <Card className="p-6 bg-white/80 backdrop-blur-sm border-2 shadow-xl">
               <h3 className="mb-4 text-xl font-bold">Reports by Provider</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={providerData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(entry) => entry.name}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {providerData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #3b82f6' }} />
-                </PieChart>
-              </ResponsiveContainer>
+              {providerData.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center text-gray-500">No data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={providerData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={(entry) => entry.name}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {providerData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #3b82f6' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </Card>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
             <Card className="p-6 bg-white/80 backdrop-blur-sm border-2 shadow-xl">
               <h3 className="mb-4 text-xl font-bold">Issue Types Distribution</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={issueTypeData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="type" stroke="#6b7280" />
-                  <YAxis stroke="#6b7280" />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #8b5cf6' }} />
-                  <Legend />
-                  <Bar dataKey="count" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {issueTypeData.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center text-gray-500">No data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={issueTypeData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="type" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #8b5cf6' }} />
+                    <Legend />
+                    <Bar dataKey="count" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </Card>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}>
             <Card className="p-6 bg-white/80 backdrop-blur-sm border-2 shadow-xl">
               <h3 className="mb-4 text-xl font-bold">Weather Impact Analysis</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={weatherImpact}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="weather" stroke="#6b7280" />
-                  <YAxis yAxisId="left" stroke="#6b7280" />
-                  <YAxis yAxisId="right" orientation="right" stroke="#6b7280" />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #3b82f6' }} />
-                  <Legend />
-                  <Bar yAxisId="left" dataKey="reports" fill="#3b82f6" name="Reports" radius={[8, 8, 0, 0]} />
-                  <Bar yAxisId="right" dataKey="avgSignal" fill="#10b981" name="Avg Signal" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {weatherImpact.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center text-gray-500">No data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={weatherImpact}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="weather" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: '2px solid #3b82f6' }} />
+                    <Legend />
+                    <Bar dataKey="reports" fill="#3b82f6" name="Reports" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </Card>
           </motion.div>
         </div>
@@ -424,7 +502,7 @@ export function AdminDashboard({ onNavigate, allReports, onLogout }: AdminDashbo
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9 }}>
           <Card className="p-6 bg-white/80 backdrop-blur-sm border-2 shadow-xl">
             <h3 className="mb-4 text-2xl font-bold">Recent Reports</h3>
-            {allReports.length === 0 ? (
+            {analytics.reports.length === 0 ? (
               <div className="text-center py-12">
                 <Signal className="w-20 h-20 mx-auto mb-4 text-gray-300" />
                 <p className="text-gray-500 text-lg">No reports yet. Data will appear here as users submit reports.</p>
@@ -444,10 +522,10 @@ export function AdminDashboard({ onNavigate, allReports, onLogout }: AdminDashbo
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {allReports.slice(0, 10).map((report) => (
+                    {analytics.reports.slice(0, 20).map((report) => (
                       <TableRow key={report.id} className="hover:bg-blue-50 transition-colors">
-                        <TableCell>{new Date(report.timestamp).toLocaleString()}</TableCell>
-                        <TableCell className="font-medium">{report.userName}</TableCell>
+                        <TableCell>{formatTimestamp(report.createdAt)}</TableCell>
+                        <TableCell className="font-medium">{report.userName ?? "User"}</TableCell>
                         <TableCell className="capitalize">{report.provider}</TableCell>
                         <TableCell className="capitalize">{report.issueType.replace('-', ' ')}</TableCell>
                         <TableCell>{report.signalStrength} bars</TableCell>

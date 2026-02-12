@@ -8,6 +8,7 @@ const FieldValue = admin.firestore.FieldValue;
 async function loadUsers() {
   const snap = await db.collection("users").get();
   const byEmail = new Map();
+  const byUid = new Map();
   const allUids = new Set();
   snap.docs.forEach((doc) => {
     const data = doc.data() || {};
@@ -15,8 +16,13 @@ async function loadUsers() {
     allUids.add(uid);
     const email = (data.email || "").toLowerCase();
     if (email) byEmail.set(email, uid);
+    byUid.set(uid, {
+      displayName: data.displayName || null,
+      email: data.email || "",
+      photoURL: data.photoURL || null,
+    });
   });
-  return { byEmail, allUids };
+  return { byEmail, byUid, allUids };
 }
 
 async function scanReportsCollection(name, userByEmail, counts) {
@@ -95,6 +101,7 @@ async function updateUserCounts(counts) {
         ref,
         {
           reportsCount: count,
+          score: count * 10,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -107,7 +114,7 @@ async function updateUserCounts(counts) {
 
 async function main() {
   console.log("Loading users...");
-  const { byEmail } = await loadUsers();
+  const { byEmail, byUid } = await loadUsers();
 
   const counts = new Map();
 
@@ -121,6 +128,33 @@ async function main() {
 
   console.log("Updating user counts...");
   await updateUserCounts(counts);
+
+  console.log("Updating leaderboard...");
+  const leaderboardEntries = Array.from(counts.entries());
+  let idx = 0;
+  while (idx < leaderboardEntries.length) {
+    const batch = db.batch();
+    const slice = leaderboardEntries.slice(idx, idx + 400);
+    slice.forEach(([uid, count]) => {
+      const user = byUid.get(uid) || {};
+      const ref = db.doc(`leaderboard/${uid}`);
+      batch.set(
+        ref,
+        {
+          displayName: user.displayName ?? null,
+          email: user.email ?? "",
+          photoURL: user.photoURL ?? null,
+          reportsCount: count,
+          score: count * 10,
+          updatedAt: FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+    await batch.commit();
+    idx += slice.length;
+  }
 
   console.log("Done.");
 }

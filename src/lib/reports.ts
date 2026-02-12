@@ -46,5 +46,6 @@ export async function createReport(uid: string, data: Omit<Report, "id" | "userI
     ...data,
     userId: uid,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 }

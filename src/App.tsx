@@ -10,10 +10,11 @@ import { AdminDashboard } from "./components/AdminDashboard";
 import { AboutPage } from "./components/AboutPage";
 import { ProfilePage } from "./components/ProfilePage";
 import { listenAuth, logOut } from "@/lib/authService";
-import { getUserProfile, upsertUserProfile } from "@/lib/userService";
+import { getUserProfile, upsertUserProfile, setUserLastLogin, upsertLeaderboardEntry } from "@/lib/userService";
 import { subscribeReports, subscribeUserReports, type NetworkReport } from "@/lib/reportsService";
 import { auth } from "@/lib/firebase";
 import { ensureUserDoc, subscribeUserProfile } from "@/lib/profileService";
+import { listenAdmin } from "@/lib/adminService";
 
 type Page =
   | "home"
@@ -32,13 +33,14 @@ interface User {
   location: string;
   photoURL?: string | null;
   reportsCount?: number;
+  score?: number;
   isAdmin?: boolean;
 }
 
 interface Report {
   id: string;
   provider: string;
-  signalStrength: string;
+  signalStrength: number;
   networkType: string;
   issueType: string;
   location: string;
@@ -62,6 +64,7 @@ export default function App() {
   const [allReports, setAllReports] = useState<Report[]>([]);
   const [speedTestResult, setSpeedTestResult] =
     useState<SpeedTestResult | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
     // ---------- Firebase Auth (UI stays exactly same) ----------
   useEffect(() => {
@@ -78,6 +81,7 @@ export default function App() {
 
       setAuthUid(fbUser.uid);
       ensureUserDoc(fbUser.uid).catch(console.error);
+      setUserLastLogin(fbUser.uid).catch(console.error);
 
       // Profile stored in Firestore under users/{uid}
       const profile = await getUserProfile(fbUser.uid);
@@ -89,34 +93,35 @@ export default function App() {
       if (!profile) {
         const newProfile = {
           uid: fbUser.uid,
-          name: fallbackName,
           displayName: fbUser.displayName ?? fallbackName,
           email,
-          location: "",
+          location: null,
           photoURL: fbUser.photoURL ?? null,
           reportsCount: 0,
-          isAdmin: false,
+          score: 0,
         };
         await upsertUserProfile(newProfile);
         if (cancelled) return;
         setUser({
           uid: fbUser.uid,
-          name: newProfile.name,
+          name: newProfile.displayName ?? fallbackName,
           email: newProfile.email,
-          location: newProfile.location,
+          location: newProfile.location ?? "",
           photoURL: newProfile.photoURL ?? null,
           reportsCount: newProfile.reportsCount ?? 0,
-          isAdmin: newProfile.isAdmin,
+          score: newProfile.score ?? 0,
+          isAdmin: false,
         });
       } else {
         setUser({
           uid: fbUser.uid,
-          name: profile.name,
+          name: profile.displayName ?? fallbackName,
           email: profile.email || email,
-          location: profile.location,
+          location: profile.location ?? "",
           photoURL: profile.photoURL ?? null,
           reportsCount: profile.reportsCount ?? 0,
-          isAdmin: !!profile.isAdmin,
+          score: profile.score ?? 0,
+          isAdmin: false,
         });
       }
     });
@@ -138,9 +143,28 @@ export default function App() {
         location: prev?.location ?? "",
         photoURL: profile.photoURL ?? prev?.photoURL ?? null,
         reportsCount: profile.reportsCount ?? prev?.reportsCount ?? 0,
+        score: profile.score ?? prev?.score ?? 0,
         isAdmin: prev?.isAdmin ?? false,
       }));
+      upsertLeaderboardEntry({
+        uid: authUid,
+        displayName: profile.displayName ?? "User",
+        email: profile.email ?? "",
+        photoURL: profile.photoURL ?? null,
+        reportsCount: profile.reportsCount ?? 0,
+        score: profile.score ?? 0,
+        createdAt: profile.createdAt,
+      }).catch(console.error);
     });
+    return () => unsub();
+  }, [authUid]);
+
+  useEffect(() => {
+    if (!authUid) {
+      setIsAdmin(false);
+      return;
+    }
+    const unsub = listenAdmin(authUid, setIsAdmin);
     return () => unsub();
   }, [authUid]);
 
@@ -168,13 +192,13 @@ export default function App() {
           location: r.location,
           weather: r.weather,
           comments: r.comments,
-          timestamp: r.timestamp,
-          userName: r.userName,
+          timestamp: r.createdAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+          userName: r.userName ?? "User",
         }));
         setAllReports(mapped);
       };
 
-      unsub = user?.isAdmin
+      unsub = isAdmin
         ? subscribeReports(handler)
         : subscribeUserReports(uid, auth?.currentUser?.email, handler);
     } catch (err) {
@@ -185,10 +209,10 @@ export default function App() {
       cancelled = true;
       if (unsub) unsub();
     };
-  }, [user?.isAdmin, authUid]);
+  }, [isAdmin, authUid]);
 
   const handleNavigate = (page: Page) => {
-    if (page === "admin" && (!user || !user.isAdmin)) {
+    if (page === "admin" && (!user || !isAdmin)) {
       setCurrentPage("adminLogin");
       return;
     }
@@ -248,7 +272,7 @@ export default function App() {
           >
             <LandingPage
               onNavigate={handleNavigate}
-              isAdmin={user?.isAdmin}
+              isAdmin={isAdmin}
               isAuthenticated={!!user}
             />
           </motion.div>

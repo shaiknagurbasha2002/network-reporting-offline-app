@@ -49,15 +49,12 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
 
       const profile = existing ?? {
         uid: fbUser.uid,
-        name:
-          fbUser.displayName ||
-          (fbUser.email ? fbUser.email.split("@")[0] : "User"),
         displayName: fbUser.displayName || undefined,
         email: fbUser.email ?? "",
         location: existing?.location ?? "Newark, NJ",
         photoURL: fbUser.photoURL ?? null,
         reportsCount: existing?.reportsCount ?? 0,
-        isAdmin: !!existing?.isAdmin,
+        score: existing?.score ?? 0,
       };
 
       if (!existing) {
@@ -79,9 +76,9 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
 
       onLogin(
         {
-          name: profile.name,
+          name: profile.displayName ?? (profile.email ? profile.email.split("@")[0] : "User"),
           email: profile.email,
-          location: profile.location,
+          location: profile.location ?? "",
           isAdmin: isAdminUser,
         },
         isAdminLogin ? "admin" : "dashboard"
@@ -115,7 +112,7 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
 
         onLogin(
           {
-            name: profile?.name ?? (fbUser.email ? fbUser.email.split("@")[0] : "User"),
+            name: profile?.displayName ?? (fbUser.email ? fbUser.email.split("@")[0] : "User"),
             email: fbUser.email ?? loginEmail,
             location: profile?.location ?? "",
             isAdmin,
@@ -141,13 +138,12 @@ export function LoginPage({ onNavigate, onLogin, isAdminLogin }: LoginPageProps)
 
         const profile = {
           uid: fbUser.uid,
-          name: signupName || (fbUser.email ? fbUser.email.split("@")[0] : "User"),
           displayName: signupName || fbUser.displayName || undefined,
           email: fbUser.email ?? signupEmail,
           location: signupLocation || "Newark, NJ",
           photoURL: fbUser.photoURL ?? null,
           reportsCount: 0,
-          isAdmin: false,
+          score: 0,
         };
 
         await upsertUserProfile(profile);

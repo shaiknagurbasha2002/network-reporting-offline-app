@@ -3,11 +3,13 @@ import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
 export type UserProfile = {
-  uid: string;
   email?: string | null;
-  name?: string | null;
+  displayName?: string | null;
   photoURL?: string | null; // stored in Firestore (your uploaded pic)
-  authPhotoURL?: string | null; // from Google (fallback)
+  location?: string | null;
+  reportsCount?: number;
+  score?: number;
+  lastLoginAt?: any;
   updatedAt?: any;
   createdAt?: any;
 };
@@ -20,19 +22,19 @@ export function userDocRef(uid: string) {
 export async function upsertUserProfileOnLogin(params: {
   uid: string;
   email?: string | null;
-  name?: string | null;
-  authPhotoURL?: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
 }) {
   const ref = userDocRef(params.uid);
   await setDoc(
     ref,
     {
-      uid: params.uid,
       email: params.email ?? null,
-      name: params.name ?? null,
-      authPhotoURL: params.authPhotoURL ?? null,
+      displayName: params.displayName ?? null,
+      photoURL: params.photoURL ?? null,
       updatedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
+      lastLoginAt: serverTimestamp(),
     },
     { merge: true }
   );

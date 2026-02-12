@@ -20,8 +20,8 @@ export function useUserProfile(authUser: User | null) {
     upsertUserProfileOnLogin({
       uid: authUser.uid,
       email: authUser.email,
-      name: authUser.displayName,
-      authPhotoURL: authUser.photoURL,
+      displayName: authUser.displayName,
+      photoURL: authUser.photoURL,
     }).catch(console.error);
 
     const unsub = listenUserProfile(authUser.uid, setProfile);

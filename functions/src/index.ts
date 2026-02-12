@@ -12,12 +12,29 @@ async function updateUserFromReport(data: admin.firestore.DocumentData) {
 
   await db.doc(`users/${uid}`).set(
     {
-      uid,
-      displayName: data.userName ?? data.name ?? "User",
-      name: data.userName ?? data.name ?? "User",
+      displayName: data.userName ?? data.name ?? null,
       email: data.userEmail ?? data.email ?? "",
       photoURL: data.userPhotoURL ?? data.photoURL ?? null,
       reportsCount: FieldValue.increment(1),
+      score: FieldValue.increment(10),
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function updateLeaderboardFromReport(data: admin.firestore.DocumentData, delta: number) {
+  const uid = data.userId;
+  if (!uid) return;
+
+  await db.doc(`leaderboard/${uid}`).set(
+    {
+      displayName: data.userName ?? data.name ?? null,
+      email: data.userEmail ?? data.email ?? "",
+      photoURL: data.userPhotoURL ?? data.photoURL ?? null,
+      reportsCount: FieldValue.increment(delta),
+      score: FieldValue.increment(delta * 10),
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
     },
@@ -30,6 +47,9 @@ async function ensureReportFields(ref: admin.firestore.DocumentReference, data: 
 
   if (!data.createdAt) {
     updates.createdAt = FieldValue.serverTimestamp();
+  }
+  if (!data.updatedAt) {
+    updates.updatedAt = FieldValue.serverTimestamp();
   }
   if (!data.userEmail && data.email) {
     updates.userEmail = data.email;
@@ -49,6 +69,7 @@ export const onNetworkReportCreated = functions.firestore
     const data = snap.data() || {};
     await ensureReportFields(snap.ref, data);
     await updateUserFromReport(data);
+    await updateLeaderboardFromReport(data, 1);
   });
 
 export const onNetworkReportDeleted = functions.firestore
@@ -60,10 +81,12 @@ export const onNetworkReportDeleted = functions.firestore
     await db.doc(`users/${uid}`).set(
       {
         reportsCount: FieldValue.increment(-1),
+        score: FieldValue.increment(-10),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
+    await updateLeaderboardFromReport(data, -1);
   });
 
 export const onLegacyReportCreated = functions.firestore
@@ -72,6 +95,7 @@ export const onLegacyReportCreated = functions.firestore
     const data = snap.data() || {};
     await ensureReportFields(snap.ref, data);
     await updateUserFromReport(data);
+    await updateLeaderboardFromReport(data, 1);
   });
 
 export const onLegacyReportDeleted = functions.firestore
@@ -83,8 +107,10 @@ export const onLegacyReportDeleted = functions.firestore
     await db.doc(`users/${uid}`).set(
       {
         reportsCount: FieldValue.increment(-1),
+        score: FieldValue.increment(-10),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
+    await updateLeaderboardFromReport(data, -1);
   });

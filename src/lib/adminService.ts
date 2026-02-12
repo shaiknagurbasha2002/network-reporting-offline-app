@@ -46,8 +46,9 @@ export async function createAdmin(uid: string) {
   await setDoc(
     ref,
     {
-      uid,
+      role: "admin",
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     },
     { merge: true }
   );

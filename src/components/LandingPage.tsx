@@ -70,19 +70,32 @@ export function LandingPage({ onNavigate, isAdmin, isAuthenticated }: LandingPag
         </div>
         <div className="flex gap-2">
           {isAuthenticated ? (
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                onClick={() => onNavigate(isAdmin ? "admin" : "dashboard")}
-                variant="outline"
-                className="gap-2 border-2 hover:bg-white/80 backdrop-blur-sm"
-              >
-                <Shield className="w-4 h-4" />
-                <span className="hidden md:inline">
-                  {isAdmin ? "Go to Admin" : "Go to Dashboard"}
-                </span>
-                <span className="md:hidden">{isAdmin ? "Admin" : "Dashboard"}</span>
-              </Button>
-            </motion.div>
+            <>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  onClick={() => onNavigate("dashboard")}
+                  variant="outline"
+                  className="gap-2 border-2 hover:bg-white/80 backdrop-blur-sm"
+                >
+                  <Shield className="w-4 h-4" />
+                  <span className="hidden md:inline">Go to Dashboard</span>
+                  <span className="md:hidden">Dashboard</span>
+                </Button>
+              </motion.div>
+              {isAdmin && (
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
+                    onClick={() => onNavigate("admin")}
+                    variant="outline"
+                    className="gap-2 border-2 hover:bg-white/80 backdrop-blur-sm"
+                  >
+                    <Shield className="w-4 h-4" />
+                    <span className="hidden md:inline">Admin Panel</span>
+                    <span className="md:hidden">Admin</span>
+                  </Button>
+                </motion.div>
+              )}
+            </>
           ) : (
             <>
               {isAdmin && (

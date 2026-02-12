@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 import {
   addDoc,
   collection,
@@ -24,41 +24,43 @@ function requireDb() {
 export type NetworkReport = {
   id: string;
   userId: string;
-  userName: string;
-  userEmail: string;
+  userName?: string;
+  userEmail?: string;
   userPhotoURL?: string;
   provider: string;
-  signalStrength: string;
+  signalStrength: number;
   networkType: string;
   issueType: string;
   location: string;
   weather: string;
   comments: string;
-  timestamp: string;
+  createdAt?: any;
+  updatedAt?: any;
 };
 
 export type SpeedTest = {
   id: string;
   reportId: string;
   userId: string;
-  downloadSpeed: number;
-  uploadSpeed: number;
-  ping: number;
-  timestamp: string;
+  downloadMbps: number;
+  uploadMbps: number;
+  pingMs: number;
+  createdAt?: any;
+  updatedAt?: any;
 };
 
 export async function createReport(input: Omit<NetworkReport, "id">): Promise<string> {
   const ref = await addDoc(collection(requireDb(), "network_reports"), {
     ...input,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 
   await setDoc(
     doc(requireDb(), "users", input.userId),
     {
       uid: input.userId,
-      displayName: input.userName ?? "User",
-      name: input.userName ?? "User",
+      displayName: input.userName ?? null,
       email: input.userEmail ?? "",
       photoURL: input.userPhotoURL ?? null,
       reportsCount: increment(1),
@@ -68,37 +70,49 @@ export async function createReport(input: Omit<NetworkReport, "id">): Promise<st
     { merge: true }
   );
 
+  await setDoc(
+    doc(requireDb(), "leaderboard", input.userId),
+    {
+      displayName: input.userName ?? auth?.currentUser?.displayName ?? null,
+      email: input.userEmail ?? auth?.currentUser?.email ?? "",
+      photoURL: input.userPhotoURL ?? auth?.currentUser?.photoURL ?? null,
+      reportsCount: increment(1),
+      score: increment(10),
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
   return ref.id;
 }
 
-export async function createSpeedTest(input: Omit<SpeedTest, "id" | "timestamp"> & { timestamp?: string }) {
+export async function createSpeedTest(input: Omit<SpeedTest, "id" | "createdAt" | "updatedAt">) {
   await addDoc(collection(requireDb(), "speed_tests"), {
     ...input,
-    timestamp: input.timestamp ?? new Date().toISOString(),
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 }
 
 function mapReportSnapshot(snap: QuerySnapshot<DocumentData>, source: "network_reports" | "reports") {
   return snap.docs.map((d) => {
     const data: any = d.data();
-    const createdAtIso =
-      data.createdAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString();
-
     return {
       id: `${source}:${d.id}`,
       userId: data.userId ?? "",
-      userName: data.userName ?? data.name ?? "Anonymous",
-      userEmail: data.userEmail ?? data.email ?? "",
+      userName: data.userName ?? data.name ?? undefined,
+      userEmail: data.userEmail ?? data.email ?? undefined,
       userPhotoURL: data.userPhotoURL ?? data.photoURL ?? "",
       provider: data.provider ?? data.title ?? "",
-      signalStrength: data.signalStrength ?? "",
+      signalStrength: Number(data.signalStrength ?? 0),
       networkType: data.networkType ?? "",
       issueType: data.issueType ?? data.description ?? "",
       location: data.location ?? "",
       weather: data.weather ?? "",
       comments: data.comments ?? "",
-      timestamp: data.timestamp ?? createdAtIso,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
     } as NetworkReport;
   });
 }
@@ -118,7 +132,12 @@ export function subscribeReports(cb: (reports: NetworkReport[]) => void) {
 
   const emit = () => {
     const merged = [...primaryRows, ...legacyRows];
-    cb(merged);
+    const sorted = merged.sort((a, b) => {
+      const aTime = a.createdAt?.toDate?.()?.getTime?.() ?? 0;
+      const bTime = b.createdAt?.toDate?.()?.getTime?.() ?? 0;
+      return bTime - aTime;
+    });
+    cb(sorted);
   };
 
   const unsubPrimary = onSnapshot(
@@ -161,87 +180,32 @@ export function subscribeUserReports(
 ) {
   const primaryConstraints = [
     where("userId", "==", uid),
+    orderBy("createdAt", "desc"),
   ];
   if (typeof maxRows === "number" && maxRows > 0) {
     primaryConstraints.push(limit(maxRows));
   }
   const qPrimary = query(collection(requireDb(), "network_reports"), ...primaryConstraints);
 
-  const qPrimaryByEmail = email
-    ? (() => {
-        const emailConstraints = [
-          where("userEmail", "==", email),
-        ];
-        if (typeof maxRows === "number" && maxRows > 0) {
-          emailConstraints.push(limit(maxRows));
-        }
-        return query(collection(requireDb(), "network_reports"), ...emailConstraints);
-      })()
-    : null;
-  const qPrimaryByLegacyEmail = email
-    ? (() => {
-        const legacyEmailConstraints = [
-          where("email", "==", email),
-        ];
-        if (typeof maxRows === "number" && maxRows > 0) {
-          legacyEmailConstraints.push(limit(maxRows));
-        }
-        return query(collection(requireDb(), "network_reports"), ...legacyEmailConstraints);
-      })()
-    : null;
-
   const legacyConstraints = [
     where("userId", "==", uid),
+    orderBy("createdAt", "desc"),
   ];
   if (typeof maxRows === "number" && maxRows > 0) {
     legacyConstraints.push(limit(maxRows));
   }
   const qLegacy = query(collection(requireDb(), "reports"), ...legacyConstraints);
 
-  const qLegacyByEmail = email
-    ? (() => {
-        const legacyEmailConstraints = [
-          where("userEmail", "==", email),
-        ];
-        if (typeof maxRows === "number" && maxRows > 0) {
-          legacyEmailConstraints.push(limit(maxRows));
-        }
-        return query(collection(requireDb(), "reports"), ...legacyEmailConstraints);
-      })()
-    : null;
-  const qLegacyByLegacyEmail = email
-    ? (() => {
-        const legacyEmailConstraints = [
-          where("email", "==", email),
-        ];
-        if (typeof maxRows === "number" && maxRows > 0) {
-          legacyEmailConstraints.push(limit(maxRows));
-        }
-        return query(collection(requireDb(), "reports"), ...legacyEmailConstraints);
-      })()
-    : null;
-
   let primaryRows: NetworkReport[] = [];
-  let primaryEmailRows: NetworkReport[] = [];
-  let primaryLegacyEmailRows: NetworkReport[] = [];
   let legacyRows: NetworkReport[] = [];
-  let legacyEmailRows: NetworkReport[] = [];
-  let legacyLegacyEmailRows: NetworkReport[] = [];
 
   const emit = () => {
-    const merged = [
-      ...primaryRows,
-      ...primaryEmailRows,
-      ...primaryLegacyEmailRows,
-      ...legacyRows,
-      ...legacyEmailRows,
-      ...legacyLegacyEmailRows,
-    ];
+    const merged = [...primaryRows, ...legacyRows];
     const unique = new Map<string, NetworkReport>();
     merged.forEach((row) => unique.set(row.id, row));
     const sorted = Array.from(unique.values()).sort((a, b) => {
-      const aTime = Date.parse(a.timestamp || "") || 0;
-      const bTime = Date.parse(b.timestamp || "") || 0;
+      const aTime = a.createdAt?.toDate?.()?.getTime?.() ?? 0;
+      const bTime = b.createdAt?.toDate?.()?.getTime?.() ?? 0;
       return bTime - aTime;
     });
     cb(sorted);
@@ -260,35 +224,6 @@ export function subscribeUserReports(
     }
   );
 
-  const unsubPrimaryByEmail = qPrimaryByEmail
-    ? onSnapshot(
-        qPrimaryByEmail,
-        (snap) => {
-          primaryEmailRows = mapReportSnapshot(snap, "network_reports");
-          emit();
-        },
-        (err) => {
-          console.error("[subscribeUserReports:email]", err);
-          primaryEmailRows = [];
-          emit();
-        }
-      )
-    : null;
-  const unsubPrimaryByLegacyEmail = qPrimaryByLegacyEmail
-    ? onSnapshot(
-        qPrimaryByLegacyEmail,
-        (snap) => {
-          primaryLegacyEmailRows = mapReportSnapshot(snap, "network_reports");
-          emit();
-        },
-        (err) => {
-          console.error("[subscribeUserReports:legacyEmailField]", err);
-          primaryLegacyEmailRows = [];
-          emit();
-        }
-      )
-    : null;
-
   const unsubLegacy = onSnapshot(
     qLegacy,
     (snap) => {
@@ -302,42 +237,9 @@ export function subscribeUserReports(
     }
   );
 
-  const unsubLegacyByEmail = qLegacyByEmail
-    ? onSnapshot(
-        qLegacyByEmail,
-        (snap) => {
-          legacyEmailRows = mapReportSnapshot(snap, "reports");
-          emit();
-        },
-        (err) => {
-          console.error("[subscribeUserReports:legacyEmail]", err);
-          legacyEmailRows = [];
-          emit();
-        }
-      )
-    : null;
-  const unsubLegacyByLegacyEmail = qLegacyByLegacyEmail
-    ? onSnapshot(
-        qLegacyByLegacyEmail,
-        (snap) => {
-          legacyLegacyEmailRows = mapReportSnapshot(snap, "reports");
-          emit();
-        },
-        (err) => {
-          console.error("[subscribeUserReports:legacyEmailField:legacy]", err);
-          legacyLegacyEmailRows = [];
-          emit();
-        }
-      )
-    : null;
-
   return () => {
     unsubPrimary();
-    if (unsubPrimaryByEmail) unsubPrimaryByEmail();
-    if (unsubPrimaryByLegacyEmail) unsubPrimaryByLegacyEmail();
     unsubLegacy();
-    if (unsubLegacyByEmail) unsubLegacyByEmail();
-    if (unsubLegacyByLegacyEmail) unsubLegacyByLegacyEmail();
   };
 }
 
