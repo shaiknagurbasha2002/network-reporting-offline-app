@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { auth } from "@/lib/firebase";
 import { createReport, createSpeedTest } from "@/lib/reportsService";
+import { runNetworkSpeedTest } from "@/services/speedtestService";
 
 export default function ReportForm() {
   const [formData, setFormData] = useState({
@@ -30,15 +31,20 @@ export default function ReportForm() {
 
   const runSpeedTest = async () => {
     setStatus("Running speed test...");
-    await new Promise((r) => setTimeout(r, 1500));
-    setSpeed({
-      download_speed: 25 + Math.random() * 10,
-      upload_speed: 5 + Math.random() * 3,
-      ping_ms: 40 + Math.random() * 10,
-      jitter_ms: 5 + Math.random() * 2,
-      network_type: formData.signal_type || "4G",
-    });
-    setStatus("✅ Speed test complete");
+    try {
+      const { ping, download, upload, jitter } = await runNetworkSpeedTest();
+      setSpeed({
+        download_speed: Number(download),
+        upload_speed: Number(upload),
+        ping_ms: Number(ping),
+        jitter_ms: Number(jitter),
+        network_type: formData.signal_type || "4G",
+      });
+      setStatus("✅ Speed test complete");
+    } catch (err: any) {
+      console.error(err);
+      setStatus("❌ Speed test failed: " + (err?.message || "Unknown error"));
+    }
   };
 
     const handleSubmit = async (e: React.FormEvent) => {

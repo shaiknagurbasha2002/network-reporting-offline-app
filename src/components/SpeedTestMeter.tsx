@@ -4,6 +4,7 @@ import { Card } from "./ui/card";
 import { Progress } from "./ui/progress";
 import { Gauge, Wifi, Download, Upload, RotateCw } from "lucide-react";
 import { motion } from "motion/react";
+import { runNetworkSpeedTest } from "@/services/speedtestService";
 
 interface SpeedTestResult {
   downloadSpeed: number;
@@ -23,51 +24,50 @@ export function SpeedTestMeter({ onTestComplete }: SpeedTestMeterProps) {
   const [result, setResult] = useState<SpeedTestResult | null>(null);
 
   const runSpeedTest = async () => {
+    console.log("[SpeedTestMeter] button clicked");
     setIsRunning(true);
     setProgress(0);
     setResult(null);
 
-    // Simulate ping test
-    setCurrentTest("ping");
-    await simulateProgress(0, 30);
+    try {
+      console.log("[SpeedTestMeter] speed test started");
+      const { ping, download, upload } = await runNetworkSpeedTest({
+        onStage: (stage) => {
+          console.log("[SpeedTestMeter] stage", stage);
+          if (stage === "ping") setProgress(10);
+          if (stage === "download") setProgress(40);
+          if (stage === "upload") setProgress(75);
+          setCurrentTest(stage);
+        },
+      });
 
-    // Simulate download test
-    setCurrentTest("download");
-    await simulateProgress(30, 70);
+      console.log("[SpeedTestMeter] parsed values", { ping, download, upload });
+      setProgress(100);
+      const testResult: SpeedTestResult = {
+        downloadSpeed: Math.round(download),
+        uploadSpeed: Math.round(upload),
+        ping: Math.round(ping),
+        timestamp: new Date().toISOString(),
+      };
 
-    // Simulate upload test
-    setCurrentTest("upload");
-    await simulateProgress(70, 100);
-
-    // Generate random but realistic speed test results
-    const testResult: SpeedTestResult = {
-      downloadSpeed: Math.floor(Math.random() * 80) + 20, // 20-100 Mbps
-      uploadSpeed: Math.floor(Math.random() * 40) + 10, // 10-50 Mbps
-      ping: Math.floor(Math.random() * 30) + 10, // 10-40 ms
-      timestamp: new Date().toISOString(),
-    };
-
-    setResult(testResult);
-    setCurrentTest(null);
-    setIsRunning(false);
-    
-    if (onTestComplete) {
-      onTestComplete(testResult);
+      console.log("[SpeedTestMeter] response received", { ping, download, upload });
+      setResult(testResult);
+      console.log("[SpeedTestMeter] state updated", testResult);
+      if (onTestComplete) onTestComplete(testResult);
+    } catch (err) {
+      console.error("[SpeedTestMeter] error caught", err);
+      const fallback: SpeedTestResult = {
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        ping: 0,
+        timestamp: new Date().toISOString(),
+      };
+      setResult(fallback);
+      if (onTestComplete) onTestComplete(fallback);
+    } finally {
+      setCurrentTest(null);
+      setIsRunning(false);
     }
-  };
-
-  const simulateProgress = (start: number, end: number) => {
-    return new Promise<void>((resolve) => {
-      let current = start;
-      const interval = setInterval(() => {
-        current += 2;
-        setProgress(current);
-        if (current >= end) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 40);
-    });
   };
 
   const getSpeedColor = (speed: number, isDownload: boolean) => {
