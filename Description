@@ -1,0 +1,9 @@
+**Description:**
+Offline-first network monitoring dashboard — tracks network speed, health and generates reports. Works fully without internet and auto-syncs when reconnected
+
+**Website:** https://network-reporting-offline-app.vercel.app
+
+**Topics:**
+typescript · react · pwa · offline-first · network-monitoring · dashboard · nextjs · vercel
+
+---
